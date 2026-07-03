@@ -915,14 +915,11 @@ impl TextExtractor {
                             );
                         }
 
-                        // Update position for next text
-                        last_x = x + text_width;
+                        // Advance the text matrix and track the true post-advance
+                        // pen x (folds in Tz and CTM x-scale, issue #386). `last_y`
+                        // stays the shown-text origin y for line detection.
+                        last_x = advance_pen(&mut state, text_width);
                         last_y = y;
-
-                        // Update text matrix for next show operation
-                        let tx = text_width * state.horizontal_scale / 100.0;
-                        state.text_matrix =
-                            multiply_matrix(&[1.0, 0.0, 0.0, 1.0, tx, 0.0], &state.text_matrix);
                     }
                 }
 
@@ -987,15 +984,10 @@ impl TextExtractor {
 
                                     // Keep the pen position in sync so a following
                                     // `Tj`/`TJ` measures its gap from the right origin
-                                    // (issue #381: a stale `last_y` dropped newlines).
-                                    last_x = x + text_width;
+                                    // (issue #381: a stale `last_y` dropped newlines;
+                                    // issue #386: `last_x` must fold in Tz/CTM scale).
+                                    last_x = advance_pen(&mut state, text_width);
                                     last_y = y;
-
-                                    let tx = text_width * state.horizontal_scale / 100.0;
-                                    state.text_matrix = multiply_matrix(
-                                        &[1.0, 0.0, 0.0, 1.0, tx, 0.0],
-                                        &state.text_matrix,
-                                    );
                                 }
                                 TextElement::Spacing(adjustment) => {
                                     // Text position adjustment (negative = move left,
@@ -1103,12 +1095,8 @@ impl TextExtractor {
                             );
                         }
 
-                        last_x = x + text_width;
+                        last_x = advance_pen(&mut state, text_width);
                         last_y = y;
-
-                        let tx = text_width * state.horizontal_scale / 100.0;
-                        state.text_matrix =
-                            multiply_matrix(&[1.0, 0.0, 0.0, 1.0, tx, 0.0], &state.text_matrix);
                     }
                 }
 
@@ -1164,12 +1152,8 @@ impl TextExtractor {
                             );
                         }
 
-                        last_x = x + text_width;
+                        last_x = advance_pen(&mut state, text_width);
                         last_y = y;
-
-                        let tx = text_width * state.horizontal_scale / 100.0;
-                        state.text_matrix =
-                            multiply_matrix(&[1.0, 0.0, 0.0, 1.0, tx, 0.0], &state.text_matrix);
                     }
                 }
 
@@ -1982,6 +1966,21 @@ fn emit_text_fragment(
 fn text_origin(state: &TextState) -> (f64, f64) {
     let combined = multiply_matrix(&state.text_matrix, &state.ctm);
     transform_point(0.0, 0.0, &combined)
+}
+
+/// Advance the text matrix by one shown glyph run of unscaled width
+/// `text_width` and return the pen's new x in user space.
+///
+/// The advance applied to the text matrix is `text_width * Tz/100`
+/// (`state.horizontal_scale`), and the resulting user-space displacement also
+/// folds in the CTM's x-scale. The caller's `last_x` (used for `dx`-based
+/// space decisions) must therefore come from the post-advance pen origin, not
+/// from `origin_x + text_width`, which ignores both factors and trails the
+/// real pen whenever `Tz != 100` or the CTM scales x (issue #386).
+fn advance_pen(state: &mut TextState, text_width: f64) -> f64 {
+    let tx = text_width * state.horizontal_scale / 100.0;
+    state.text_matrix = multiply_matrix(&[1.0, 0.0, 0.0, 1.0, tx, 0.0], &state.text_matrix);
+    text_origin(state).0
 }
 
 /// Multiply two transformation matrices
