@@ -937,6 +937,25 @@ impl TextExtractor {
                                     // for Artifact scopes (issue #330).
                                     let skip_text =
                                         skip_artifact_text(&state, self.options.include_artifacts);
+
+                                    // Pen origin in user space = (CTM × text_matrix)(0, 0).
+                                    let (x, y) = text_origin(&state);
+
+                                    // Insert a newline when this TJ piece starts on a
+                                    // different visual line than the previously shown
+                                    // text (issue #381). Only the vertical case is
+                                    // handled here: horizontal word spacing within a
+                                    // line is governed by the `TextElement::Spacing`
+                                    // kern logic below, and adding a dx-based space
+                                    // would wrongly split a single word that a TJ array
+                                    // draws as several positioned pieces.
+                                    if !skip_text
+                                        && !extracted_text.is_empty()
+                                        && (y - last_y).abs() > self.options.newline_threshold
+                                    {
+                                        extracted_text.push('\n');
+                                    }
+
                                     if !skip_text {
                                         extracted_text.push_str(&decoded);
                                     }
@@ -955,7 +974,6 @@ impl TextExtractor {
                                     };
 
                                     if self.options.preserve_layout {
-                                        let (x, y) = text_origin(&state);
                                         emit_text_fragment(
                                             &mut fragments,
                                             &decoded,
@@ -966,6 +984,12 @@ impl TextExtractor {
                                             self.options.include_artifacts,
                                         );
                                     }
+
+                                    // Keep the pen position in sync so a following
+                                    // `Tj`/`TJ` measures its gap from the right origin
+                                    // (issue #381: a stale `last_y` dropped newlines).
+                                    last_x = x + text_width;
+                                    last_y = y;
 
                                     let tx = text_width * state.horizontal_scale / 100.0;
                                     state.text_matrix = multiply_matrix(
