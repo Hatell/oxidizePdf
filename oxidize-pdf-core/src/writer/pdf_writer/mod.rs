@@ -2913,15 +2913,6 @@ impl<W: Write> PdfWriter<W> {
             // Convert pdf_objects::Dictionary to writer Dictionary FIRST
             let mut preserved_writer_dict = self.convert_pdf_objects_dict_to_writer(preserved_res);
 
-            // Step 1: Rename preserved fonts (F1 → OrigF1)
-            if let Some(Object::Dictionary(fonts)) = preserved_writer_dict.get("Font") {
-                // Rename font dictionary keys using our utility function
-                let renamed_fonts = crate::writer::rename_preserved_fonts(fonts);
-
-                // Replace Font dictionary with renamed version
-                preserved_writer_dict.set("Font", Object::Dictionary(renamed_fonts));
-            }
-
             // Phase 3.3: Write embedded font streams as indirect objects
             // Fonts that were resolved in Phase 3.2 have embedded Stream objects
             // We need to write these streams as separate PDF objects and replace with References
